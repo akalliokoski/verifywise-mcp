@@ -83,98 +83,51 @@
 
 ### 0.2 VerifyWise as Git Submodule
 
-- [ ] **Add VerifyWise as git submodule**
+- [x] **Add VerifyWise as git submodule**
   ```bash
   git submodule add https://github.com/bluewave-labs/verifywise verifywise
   git submodule update --init --recursive
   ```
   Verify: `ls verifywise/` shows `Client/`, `Servers/`, `docker-compose.yml`
 
-- [ ] **Pin to a specific version/tag**
-  ```bash
-  cd verifywise
-  git log --oneline -10  # Review available commits
-  # Optionally: git checkout <stable-tag>
-  cd ..
-  git add verifywise
-  git commit -m "chore: pin verifywise submodule to known-good commit"
-  ```
-  Verify: `git submodule status` shows the pinned commit hash
+- [x] **Pin to a specific version/tag**
+  Pinned to `v2.1` (bc2473379). `git submodule status` shows the pinned commit hash.
 
-- [ ] **Explore VerifyWise API routes from submodule**
-  ```bash
-  ls verifywise/Servers/src/routes/
-  cat verifywise/Servers/src/routes/project.route.ts
-  cat verifywise/Servers/src/routes/vendor.route.ts
-  cat verifywise/Servers/src/routes/risk.route.ts
-  ```
-  Verify: Routes are visible; note all endpoint paths and HTTP methods in a comment in `src/verifywise_mcp/client.py`
+- [x] **Explore VerifyWise API routes from submodule**
+  Routes live in `verifywise/Servers/routes/`. Key endpoints documented in
+  `src/verifywise_mcp/client.py`. Authentication via `POST /api/users/login`.
+  Verify: Routes are visible; endpoint paths noted.
 
-- [ ] **Explore VerifyWise Docker Compose configuration**
-  ```bash
-  cat verifywise/docker-compose.yml
-  # Note: required environment variables, port mappings, service names
-  ```
+- [x] **Explore VerifyWise Docker Compose configuration**
+  Uses pre-built images (`ghcr.io/bluewave-labs/verifywise-*:latest`).
+  Backend on port 3000, frontend on port 8080 (prod). Requires postgres + redis.
   Verify: Understand how to start the full stack
 
 ---
 
 ### 0.3 VerifyWise Docker Setup and Verification
 
-- [ ] **Create docker-compose.test.yml**
-  Create a test-specific Docker Compose file that:
-  - Mounts VerifyWise services
-  - Uses fixed test credentials
-  - Includes health checks
-  See ARCHITECTURE.md "Docker Compose (Integration Testing)" section.
-  Verify: File is syntactically valid (`docker compose -f docker-compose.test.yml config` exits 0)
+- [x] **Create docker-compose.test.yml**
+  Uses pre-built images with hardcoded test credentials and `MOCK_DATA_ON=true`.
+  Verify: `docker compose -f docker-compose.test.yml config` exits 0 ✓
 
-- [ ] **Create scripts/start-verifywise.sh**
-  ```bash
-  #!/usr/bin/env bash
-  set -euo pipefail
-  echo "Starting VerifyWise stack..."
-  docker compose -f verifywise/docker-compose.yml up -d
-  echo "Waiting for VerifyWise to be healthy..."
-  ./scripts/wait-for-verifywise.sh
-  echo "VerifyWise is ready at http://localhost:8080"
-  ```
-  Verify: Script is executable (`chmod +x scripts/start-verifywise.sh`)
+- [x] **Create scripts/start-verifywise.sh**
+  Supports `--test` flag to use `docker-compose.test.yml`.
+  Verify: Script is executable ✓
 
-- [ ] **Create scripts/wait-for-verifywise.sh**
-  A script that polls `http://localhost:3000/api/health` until it returns 200
-  or times out after 120 seconds.
-  Verify: Script correctly detects when VerifyWise is ready
+- [x] **Create scripts/wait-for-verifywise.sh**
+  Polls `http://localhost:3000/api/users/check-user-exists` until 200 or timeout.
+  Verify: Script correctly detects when VerifyWise is ready ✓
 
-- [ ] **Create scripts/stop-verifywise.sh**
-  Gracefully stops and optionally removes volumes.
-  Verify: `docker compose ps` shows no running containers after script
+- [x] **Create scripts/stop-verifywise.sh**
+  Supports `--test` and `--volumes` flags.
+  Verify: Stops gracefully ✓
 
-- [ ] **Verify VerifyWise starts correctly**
-  ```bash
-  ./scripts/start-verifywise.sh
-  ```
-  Expected: All services healthy, accessible at http://localhost:8080
-  Verify with Showboat:
-  ```bash
-  cd demos/
-  showboat init "VerifyWise Startup Verification"
-  showboat exec "docker compose -f ../verifywise/docker-compose.yml ps"
-  showboat exec "curl -s http://localhost:3000/api/health | jq ."
-  showboat verify
-  ```
-  Commit: `demos/verifywise-startup.md`
+- [x] **Verify VerifyWise starts correctly**
+  Showboat demo: `demos/verifywise-startup.md`
 
-- [ ] **Verify VerifyWise UI with Rodney**
-  ```bash
-  rodney start
-  rodney open http://localhost:8080
-  rodney screenshot tests/e2e/screenshots/verifywise-homepage.png
-  rodney js "document.title"
-  rodney stop
-  ```
-  Verify: Screenshot shows VerifyWise login page; document title is correct.
-  Commit: screenshot as part of the repo (in `tests/e2e/screenshots/`)
+- [x] **Verify VerifyWise UI with Rodney**
+  Screenshot: `tests/e2e/screenshots/verifywise-homepage.png`
 
 ---
 
