@@ -23,30 +23,30 @@
 - [x] ARCHITECTURE.md created — System design
 - [x] TASKS.md created — This file
 
-- [ ] **Initialize Python project with uv**
+- [x] **Initialize Python project with uv**
   ```bash
   uv init --name verifywise-mcp --python 3.12
   ```
   Verify: `cat pyproject.toml` shows `[project]` section with `name = "verifywise-mcp"`
 
-- [ ] **Add runtime dependencies**
+- [x] **Add runtime dependencies**
   ```bash
   uv add "mcp[cli]" httpx "pydantic>=2.0" "pydantic-settings>=2.0"
   ```
   Verify: `uv run python -c "import mcp; import httpx; import pydantic; print('OK')"` outputs `OK`
 
-- [ ] **Add dev dependencies**
+- [x] **Add dev dependencies**
   ```bash
   uv add --dev pytest pytest-asyncio pytest-cov ruff pyright respx
   ```
   Verify: `uv run pytest --version` runs without error
 
-- [ ] **Configure pyproject.toml**
+- [x] **Configure pyproject.toml**
   Add ruff, pyright, pytest configuration to `pyproject.toml`.
   See ARCHITECTURE.md for configuration blocks.
   Verify: `uvx ruff check .` exits 0 (no errors on empty project)
 
-- [ ] **Create directory structure**
+- [x] **Create directory structure**
   ```bash
   mkdir -p src/verifywise_mcp/{tools,resources}
   mkdir -p tests/{unit/tools,unit/resources,integration,e2e/screenshots}
@@ -60,7 +60,7 @@
   ```
   Verify: `ls -la src/verifywise_mcp/tools/` shows `__init__.py`
 
-- [ ] **Create .env.example**
+- [x] **Create .env.example**
   ```
   # VerifyWise connection
   VERIFYWISE_BASE_URL=http://localhost:3000
@@ -75,7 +75,7 @@
   ```
   Verify: File exists and is committed (not in .gitignore)
 
-- [ ] **Update .gitignore**
+- [x] **Update .gitignore**
   Add `.env` (not `.env.example`), `screenshots/`, `demos/*.html`
   Verify: `git status` doesn't show `.env` as untracked
 
