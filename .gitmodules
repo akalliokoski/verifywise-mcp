@@ -1,0 +1,3 @@
+[submodule "verifywise"]
+	path = verifywise
+	url = https://github.com/bluewave-labs/verifywise
