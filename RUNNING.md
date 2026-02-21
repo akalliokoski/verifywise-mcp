@@ -266,14 +266,65 @@ All steps above are wrapped in:
 > How to configure environment variables and initialise the environment in
 > Claude Code on the web, taking advantage of the container env cache.
 
-### Overview
+### How caching works
 
-Claude Code on the web runs each session in a container. The container state
-is **cached after the `SessionStart` hook completes**, so:
+According to the [official docs](https://code.claude.com/docs/en/claude-code-on-the-web),
+**custom container snapshots are not yet supported**. The `SessionStart` hook
+runs on every session (including resumes). However:
 
-- `npm install` / `uv sync` / `go install` run once, then packages are cached
-- System services (postgres, redis) started in the hook stay running
-- Env vars written to `$CLAUDE_ENV_FILE` are available in every tool call
+> The container filesystem IS persisted and cached between sessions in the same
+> environment. `node_modules`, `.venv`, built `dist/`, and Go binaries all
+> survive session restarts — only **running processes** and **`/tmp`** are reset.
+
+This means the hook should be written to **check before doing** — skip steps
+that are already done, only redo what's truly stateless (starting server processes).
+
+| Thing | Cached across sessions? | How to detect |
+|-------|------------------------|---------------|
+| `verifywise/Servers/node_modules` | ✅ Yes | `[ -d node_modules ]` |
+| `verifywise/Clients/node_modules` | ✅ Yes (but check rollup) | validate native module |
+| `verifywise/Servers/dist/` | ✅ Yes | compare mtime vs `.ts` sources |
+| `.venv/` (Python) | ✅ Yes | `uv sync` is a no-op when current |
+| `~/go/bin/showboat`, `rodney` | ✅ Yes | `command -v showboat` |
+| PostgreSQL data + migrations | ✅ Yes | migrate-db is instant if up-to-date |
+| Backend process (`node dist/`) | ❌ No — must restart | always restart |
+| Frontend process (`vite`) | ❌ No — must restart | always restart |
+| `/tmp/` files | ❌ No | always recreated |
+
+**Typical warm-container hook time: ~15s** (services start + backend launch)
+vs. ~3–5 min cold (full install + build).
+
+### Warm vs cold session timing
+
+```
+COLD session (first time / cache cleared):
+  Phase 2  services        ~10s
+  Phase 3  uv sync         ~30s   (downloads packages)
+  Phase 4  go install x2   ~60s   (compiles binaries)
+  Phase 5  DB setup        ~5s
+  Phase 6  npm install     ~90s   (downloads 500+ packages)
+  Phase 7  tsc build       ~30s
+  Phase 8  migrations      ~10s
+  Phase 9  seed            ~2s
+  Phase 10 backend start   ~10s
+  Phase 11 npm install     ~60s
+  Phase 12 frontend start  ~5s
+  Total:                   ~5 min
+
+WARM session (cached node_modules, dist/, binaries):
+  Phase 2  services        ~5s    (fast when already stopped cleanly)
+  Phase 3  uv sync         ~2s    (no-op)
+  Phase 4  SKIP go tools   ~0s
+  Phase 5  SKIP .env       ~0s
+  Phase 6  SKIP npm install~0s
+  Phase 7  SKIP tsc build  ~0s
+  Phase 8  migrations      ~3s    (instant, nothing to run)
+  Phase 9  seed            ~1s    (instant, user exists)
+  Phase 10 backend start   ~5s
+  Phase 11 SKIP npm install~0s
+  Phase 12 frontend start  ~3s
+  Total:                   ~20s
+```
 
 ### Environment variables
 
@@ -296,21 +347,24 @@ env vars at session start and can be referenced as `$VERIFYWISE_PASSWORD`.
 ### SessionStart hook
 
 The hook at `.claude/hooks/session-start.sh` runs on every session start.
-See that file for the full implementation. Key phases:
+It uses idempotency guards to skip any work the cached container already has.
 
-| Phase | What it does |
-|-------|-------------|
-| 1. Check remote | Skip if not a web session |
-| 2. System services | `service postgresql start`, `service redis-server start` |
-| 3. Python deps | `uv sync` (fast; uses cache after first run) |
-| 4. Go tools | `go install showboat`, `go install rodney` (cached) |
-| 5. Backend setup | `npm install`, `npm run build`, `npm run migrate-db` |
-| 6. Database seed | Insert org + admin user if absent (idempotent) |
-| 7. Backend start | `node dist/index.js &` (background) |
-| 8. Frontend setup | `npm install` in `Clients/` |
-| 9. Frontend start | `npm run dev:vite &` (background) |
-| 10. Env vars | Write `VERIFYWISE_*` to `$CLAUDE_ENV_FILE` |
-| 11. Health wait | Poll backend until ready |
+| Phase | What it does | Cached? |
+|-------|-------------|---------|
+| 1. Guard | Exit if not `CLAUDE_CODE_REMOTE=true` | — |
+| 2. System services | `service postgresql/redis start` | ❌ always |
+| 3. Python deps | `uv sync` (no-op when `.venv` is current) | ✅ fast |
+| 4. Go tools | `go install` only if binary missing | ✅ skip |
+| 5. DB + .env | Create DB / .env only if absent | ✅ skip |
+| 6. Backend npm | `npm install` only if `node_modules` missing | ✅ skip |
+| 7. Backend build | `tsc` only if `dist/` older than `.ts` sources | ✅ skip |
+| 8. Migrations | `sequelize migrate` (instant when up-to-date) | ✅ fast |
+| 9. DB seed | Insert org + admin if absent (idempotent) | ✅ fast |
+| 10. Backend start | `nohup node dist/index.js &` | ❌ always |
+| 11. Frontend npm | `npm install` only if `node_modules` missing | ✅ skip |
+| 12. Frontend start | `nohup npm run dev:vite &` | ❌ always |
+| 13. Env vars | Write `VERIFYWISE_*` to `$CLAUDE_ENV_FILE` | ❌ always |
+| 14. Health wait | Poll backend until ready | ❌ always |
 
 ### Registering the hook
 
@@ -344,6 +398,22 @@ CLAUDE_ENV_FILE=/tmp/claude-env-test.sh \
 # Inspect what env vars were exported
 cat /tmp/claude-env-test.sh
 ```
+
+### Setting environment variables in Claude Code web
+
+Go to your project's **Environment settings** in Claude Code on the web:
+
+1. Open the environment selector → click the settings ⚙ icon
+2. Add key-value pairs under **Environment Variables** (`.env` format):
+   ```
+   VERIFYWISE_BASE_URL=http://localhost:3000
+   VERIFYWISE_EMAIL=verifywise@email.com
+   ```
+3. For secrets (passwords, API keys), these are injected at session start
+   and available as `$VARIABLE_NAME` inside the hook and all tool calls
+
+> Note: env vars set in the UI are available **before** the hook runs, so
+> `$VERIFYWISE_PASSWORD` is readable inside `session-start.sh` directly.
 
 ---
 
