@@ -252,7 +252,84 @@ uv run pytest -s
 
 ---
 
-### 7. Docker Compose — VerifyWise Infrastructure
+### 7. Local npm Stack — VerifyWise Without Docker
+
+**Purpose:** Run the full VerifyWise stack using npm and system services (no Docker required).
+This is the preferred mode for Claude Code web sessions and resource-constrained environments.
+
+**Full docs:** See `RUNNING.md` for step-by-step instructions and troubleshooting.
+
+```bash
+# One-command startup (handles everything)
+./scripts/start-verifywise-local.sh
+
+# Skip reinstalling node_modules (faster if already installed)
+./scripts/start-verifywise-local.sh --skip-install
+
+# Stop backend and frontend processes
+./scripts/stop-verifywise-local.sh
+
+# Stop processes AND system services (postgres/redis)
+./scripts/stop-verifywise-local.sh --services
+```
+
+**Default credentials once running:**
+```
+Backend:   http://localhost:3000
+Frontend:  http://localhost:5173
+Email:     verifywise@email.com
+Password:  MyJH4rTm!@.45L0wm
+```
+
+**Seed database (idempotent — safe to re-run):**
+```bash
+node scripts/seed-verifywise.js
+```
+
+**Run full verification suite against live stack:**
+```bash
+# All checks: API, frontend, showboat, rodney browser, MCP deps
+./scripts/verify-verifywise.sh
+
+# Skip browser (for headless/CI environments)
+./scripts/verify-verifywise.sh --skip-browser
+
+# Skip MCP checks (only verify VerifyWise itself)
+./scripts/verify-verifywise.sh --skip-mcp
+```
+
+**Individual checks:**
+```bash
+# 1. API login
+TOKEN=$(curl -s -X POST http://localhost:3000/api/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"verifywise@email.com","password":"MyJH4rTm!@.45L0wm"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['token'])")
+echo "Token: ${TOKEN:0:30}..."
+
+# 2. Frontend reachable
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5173/
+
+# 3. Showboat proof-of-work
+showboat verify demos/verification.md
+
+# 4. Rodney browser smoke test
+export PATH=$PATH:~/go/bin
+rodney start --global
+rodney --global open http://localhost:5173/
+rodney --global title    # → VerifyWise - Open Source AI Governance Platform
+rodney --global url      # → http://localhost:5173/login
+rodney --global stop
+```
+
+**Known issues:**
+- `resetDatabase.js` fails with FK error: use `node scripts/seed-verifywise.js` instead
+- `@rollup/rollup-linux-x64-gnu` not found: `rm -rf verifywise/Clients/node_modules && npm install`
+- `REDIS_HOST=redis` in .env: run `sed -i 's/REDIS_HOST=redis/REDIS_HOST=localhost/' verifywise/Servers/.env`
+
+---
+
+### 8. Docker Compose — VerifyWise Infrastructure
 
 **Purpose:** Running the full VerifyWise stack for integration and E2E testing.
 
@@ -373,8 +450,8 @@ cat verifywise/Servers/src/controllers/project.controller.ts
 # 1. Get auth token
 TOKEN=$(curl -s -X POST http://localhost:3000/api/users/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "admin@example.com", "password": "changeme"}' \
-  | jq -r '.token')
+  -d '{"email":"verifywise@email.com","password":"MyJH4rTm!@.45L0wm"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['token'])")
 
 # 2. Call an endpoint
 curl -s http://localhost:3000/api/projects \
@@ -387,28 +464,31 @@ curl -s http://localhost:3000/api/projects \
 
 ```bash
 # Start browser
-rodney start
+export PATH=$PATH:~/go/bin
+rodney start --global
 
-# Login to VerifyWise
-rodney open http://localhost:8080
-rodney type "input[name=email]" "admin@example.com"
-rodney type "input[name=password]" "changeme"
-rodney click "button[type=submit]"
+# Login to VerifyWise (local npm: port 5173 / Docker: port 8080)
+rodney --global open http://localhost:5173/
+rodney --global wait "input[type=email]"
+rodney --global input "input[type=email]" "verifywise@email.com"
+rodney --global input "input[type=password]" 'MyJH4rTm!@.45L0wm'
+rodney --global click "button[type=submit]"
+rodney --global sleep 2
 
 # Before tool call — capture state
-rodney screenshot screenshots/before-create-risk.png
-rodney js "document.querySelectorAll('.risk-item').length"  # Count risks
+rodney --global screenshot /tmp/before-create-risk.png
+rodney --global js "document.querySelectorAll('.risk-item').length"  # Count risks
 
 # Run MCP tool (create a risk via the server)
 uv run python scripts/call_tool.py create_risk --project-id "proj-123" --title "Test Risk"
 
 # After tool call — verify UI updated
-rodney open http://localhost:8080/projects/proj-123/risks  # Navigate to risks page
-rodney screenshot screenshots/after-create-risk.png
-rodney js "document.querySelectorAll('.risk-item').length"  # Should be +1
+rodney --global open http://localhost:5173/projects/proj-123/risks
+rodney --global screenshot /tmp/after-create-risk.png
+rodney --global js "document.querySelectorAll('.risk-item').length"  # Should be +1
 
 # Stop browser
-rodney stop
+rodney --global stop
 ```
 
 ---

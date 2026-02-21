@@ -209,3 +209,5 @@ __marimo__/
 # VerifyWise MCP — project-specific
 tests/e2e/screenshots/
 demos/*.html
+demos/*.png
+demos/.rodney/

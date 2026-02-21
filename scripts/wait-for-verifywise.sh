@@ -22,7 +22,9 @@ DEADLINE=$(( $(date +%s) + TIMEOUT ))
 echo "Polling $HEALTH_URL (timeout: ${TIMEOUT}s)..."
 
 while true; do
-  if curl -sf --max-time 5 "$HEALTH_URL" > /dev/null 2>&1; then
+  # The endpoint returns 400 (no token) but proves the server is up.
+  # Don't use -f so we accept any HTTP response including 4xx.
+  if curl -s --max-time 5 "$HEALTH_URL" 2>/dev/null | grep -q "message"; then
     echo "VerifyWise backend is up at $BACKEND_URL"
     exit 0
   fi
