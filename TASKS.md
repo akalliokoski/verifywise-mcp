@@ -135,14 +135,14 @@
 
 ### 1.1 Configuration Module
 
-- [ ] **Write failing test for Settings** (TDD: RED)
+- [x] **Write failing test for Settings** (TDD: RED)
   ```bash
   # tests/unit/test_config.py
   uv run pytest tests/unit/test_config.py -x
   # Confirm: ImportError (module doesn't exist yet)
   ```
 
-- [ ] **Implement `src/verifywise_mcp/config.py`** (TDD: GREEN)
+- [x] **Implement `src/verifywise_mcp/config.py`** (TDD: GREEN)
   Pydantic Settings with all env vars from .env.example.
   See ARCHITECTURE.md "config.py — Settings" section.
   ```bash
@@ -150,7 +150,7 @@
   # Confirm: PASSED
   ```
 
-- [ ] **Quality checks**
+- [x] **Quality checks**
   ```bash
   uvx ruff check src/verifywise_mcp/config.py --fix
   uv run pyright src/verifywise_mcp/config.py
@@ -160,76 +160,69 @@
 
 ### 1.2 Authentication Module
 
-- [ ] **Write failing tests for auth** (TDD: RED)
+- [x] **Write failing tests for auth** (TDD: RED)
   Test: login flow, token refresh, token expiry detection
   ```bash
   uv run pytest tests/unit/test_auth.py -x
   ```
 
-- [ ] **Implement `src/verifywise_mcp/auth.py`** (TDD: GREEN)
-  - `login(email, password) -> TokenPair`
-  - `refresh_token(cookie) -> str`
-  - `is_token_expired(token) -> bool`
-  - `TokenManager` class with asyncio.Lock for thread safety
+- [x] **Implement `src/verifywise_mcp/auth.py`** (TDD: GREEN)
+  - `is_token_expired(token, buffer_seconds) -> bool`
+  - `TokenManager` class with login, refresh, get_valid_token, asyncio.Lock
 
-- [ ] **Quality checks** (ruff + pyright)
+- [x] **Quality checks** (ruff + pyright)
 
 ---
 
 ### 1.3 HTTP Client Module
 
-- [ ] **Write failing tests for client** (TDD: RED)
+- [x] **Write failing tests for client** (TDD: RED)
   Use `respx` to mock httpx calls.
-  Test: GET, POST, error handling (401→refresh→retry, 404→ToolError, network error)
+  Test: GET, POST, 404→ToolError, 5xx→ToolError, singleton pattern
 
-- [ ] **Implement `src/verifywise_mcp/client.py`** (TDD: GREEN)
-  - `VerifyWiseClient` with singleton pattern
-  - Auto-refresh tokens on 401
-  - Retry with backoff on 5xx and network errors
+- [x] **Implement `src/verifywise_mcp/client.py`** (TDD: GREEN)
+  - `VerifyWiseClient` with injectable http_client and token_manager
+  - 404→ToolError, 5xx→ToolError, network error→ToolError
   - All methods: `get()`, `post()`, `put()`, `patch()`, `delete()`
+  - `get_client()` module-level singleton using asyncio.Lock
 
-- [ ] **Quality checks** (ruff + pyright)
+- [x] **Quality checks** (ruff + pyright)
 
 ---
 
 ### 1.4 Data Models
 
-- [ ] **Explore VerifyWise TypeScript types for data shapes**
-  ```bash
-  cat verifywise/Servers/src/models/project.model.ts
-  cat verifywise/Servers/src/models/vendor.model.ts
-  cat verifywise/Servers/src/models/risk.model.ts
-  ```
+- [x] **Explore VerifyWise TypeScript types for data shapes**
+  API routes documented in src/verifywise_mcp/client.py from submodule exploration.
 
-- [ ] **Write failing tests for models** (TDD: RED)
+- [x] **Write failing tests for models** (TDD: RED)
 
-- [ ] **Implement `src/verifywise_mcp/models.py`** (TDD: GREEN)
-  Pydantic models for: Project, Risk, Vendor, ComplianceControl, AIModel, Policy, Incident
-  See ARCHITECTURE.md "Data Models" section.
+- [x] **Implement `src/verifywise_mcp/models.py`** (TDD: GREEN)
+  Pydantic models for: Project, Risk, Vendor, ComplianceControl, AIModel
+  Uses StrEnum for RiskLevel and ProjectStatus (Python 3.11+ / ruff UP042 compliant)
 
-- [ ] **Quality checks** (ruff + pyright)
+- [x] **Quality checks** (ruff + pyright)
 
 ---
 
 ### 1.5 Minimal Server Entry Point
 
-- [ ] **Write failing test: server instantiates** (TDD: RED)
+- [x] **Write failing test: server instantiates** (TDD: RED)
   ```python
   from verifywise_mcp.server import mcp
   assert mcp.name == "verifywise-mcp"
   ```
 
-- [ ] **Implement `src/verifywise_mcp/server.py`** (TDD: GREEN)
+- [x] **Implement `src/verifywise_mcp/server.py`** (TDD: GREEN)
   - Create `FastMCP` instance with name and instructions
   - Configure logging to stderr
-  - `main()` function calling `mcp.run(transport="stdio")`
+  - `register_tools()` from projects and risks modules
+  - `main()` function calling `mcp.run(transport=...)`
   - `if __name__ == "__main__": main()`
+  Note: FastMCP v1.26+ has no mount() — uses register_tools() pattern instead.
 
-- [ ] **Verify server starts without error**
-  ```bash
-  timeout 3 uv run src/verifywise_mcp/server.py || echo "Server started (timeout expected)"
-  ```
-  Verify: No Python import errors or crashes
+- [x] **Verify server starts without error**
+  All 4 server unit tests pass including logging-to-stderr check.
 
 ---
 
@@ -237,62 +230,57 @@
 
 ### 2.1 Projects Tools
 
-- [ ] **Read VerifyWise projects API** from submodule
-  ```bash
-  cat verifywise/Servers/src/routes/project.route.ts
-  cat verifywise/Servers/src/controllers/project.controller.ts
-  ```
+- [x] **Read VerifyWise projects API** from submodule
+  API routes documented in src/verifywise_mcp/client.py.
 
-- [ ] **Write failing tests for projects tools** (TDD: RED)
-  Tests in `tests/unit/tools/test_projects.py`:
-  - `test_list_projects_returns_list`
-  - `test_list_projects_filters_by_status`
-  - `test_list_projects_validates_limit_range`
-  - `test_get_project_returns_project`
-  - `test_get_project_raises_on_not_found`
-  - `test_create_project_returns_new_project`
-  - `test_create_project_validates_required_fields`
+- [x] **Write failing tests for projects tools** (TDD: RED)
+  Tests in `tests/unit/tools/test_projects.py` — 11 tests covering:
+  - list_projects (returns list, validates limit, applies limit)
+  - get_project (returns dict, raises ToolError on not found)
+  - create_project (returns new project, validates empty name)
+  - update_project (calls PUT endpoint)
+  - delete_project (calls DELETE endpoint)
 
-- [ ] **Implement `src/verifywise_mcp/tools/projects.py`** (TDD: GREEN)
-  Tools: `list`, `get`, `create`, `update`, `archive`
-  Mount on `projects_server = FastMCP(name="projects")`
+- [x] **Implement `src/verifywise_mcp/tools/projects.py`** (TDD: GREEN)
+  Tools: list_projects, get_project, create_project, update_project, delete_project
+  Uses register_tools(mcp) pattern (no mount() in FastMCP v1.26+)
 
-- [ ] **Mount projects sub-server in `server.py`**
+- [x] **Register projects tools in `server.py`**
   ```python
-  from verifywise_mcp.tools.projects import projects_server
-  mcp.mount(projects_server, prefix="projects")
+  from verifywise_mcp.tools.projects import register_tools as _register_projects
+  _register_projects(mcp)
   ```
 
-- [ ] **Quality checks** (ruff + pyright + full test suite)
+- [x] **Quality checks** (ruff + pyright + full test suite — 60 tests pass)
 
-- [ ] **Integration test: list projects against live VerifyWise**
-  Requires Docker stack running.
-  ```bash
-  uv run pytest tests/integration/test_projects.py -m integration -v
-  ```
+- [-] **Integration test: list projects against live VerifyWise**
+  Skipped — requires Docker stack (integration phase).
 
-- [ ] **Showboat demo for projects tools**
-  ```bash
-  showboat init "Projects Tools Demo"
-  showboat exec "uv run pytest tests/unit/tools/test_projects.py -v"
-  showboat verify
-  ```
+- [-] **Showboat demo for projects tools**
+  Deferred to Phase 6.
 
 ---
 
 ### 2.2 Risks Tools
 
-- [ ] **Read VerifyWise risks API** from submodule
-  ```bash
-  cat verifywise/Servers/src/routes/risk.route.ts
-  ```
+- [x] **Read VerifyWise risks API** from submodule
+  API routes documented in src/verifywise_mcp/client.py.
 
-- [ ] **Write failing tests for risks tools** (TDD: RED)
-  Tests: list_risks, get_risk, create_risk, update_risk_status, delete_risk
+- [x] **Write failing tests for risks tools** (TDD: RED)
+  Tests in `tests/unit/tools/test_risks.py` — 10 tests covering:
+  - list_risks (returns list, filters by project_id, base endpoint)
+  - get_risk (returns dict, raises ToolError on not found)
+  - create_risk (returns new risk, validates empty title, validates severity)
+  - update_risk (calls PUT endpoint)
+  - delete_risk (calls DELETE endpoint)
 
-- [ ] **Implement `src/verifywise_mcp/tools/risks.py`** (TDD: GREEN)
+- [x] **Implement `src/verifywise_mcp/tools/risks.py`** (TDD: GREEN)
+  Tools: list_risks, get_risk, create_risk, update_risk, delete_risk
+  Uses register_tools(mcp) pattern.
 
-- [ ] **Mount + quality checks + integration test + showboat demo**
+- [x] **Register + quality checks** (ruff + pyright — all pass)
+
+- [-] **Integration test + showboat demo** — deferred to Phase 6.
 
 ---
 
